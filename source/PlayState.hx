@@ -3,10 +3,13 @@ package;
 import flixel.FlxG;
 import flixel.FlxSprite;
 import flixel.FlxState;
+import flixel.input.mouse.FlxMouseEvent;
 import flixel.input.mouse.FlxMouseEventManager;
 import flixel.text.FlxText;
 import flixel.tweens.FlxTween;
 import flixel.util.FlxColor;
+
+using StringTools;
 
 class PlayState extends FlxState
 {
@@ -18,16 +21,18 @@ class PlayState extends FlxState
 	private var tile:BoardTile;
 	private var tiles:Array<Array<Int>>;
 
-	private var GRID_X:Int = 290;
-	private var GRID_Y:Int = 125;
-	private var ITEM_SIZE:Int = 60;
-	private var TOTAL_ITEMS:Int = 5;
+	final GRID_X:Int = 290;
+	final GRID_Y:Int = 125;
+	final ITEM_SIZE:Int = 70;
+	final TOTAL_ITEMS:Int = 5;
 
 	private var selectedFrame:FlxSprite;
 	private var pickedRow:Int;
 	private var pickedCol:Int;
 
-	// private var types:Array<String> = ["Fire", "Leaf", "Earth", "Water", "Star"];
+	private var types:Array<String> = ["Fire", "Leaf", "Earth", "Water", "Star"];
+
+	var replenishColums:Array<Int> = [];
 
 	override public function create()
 	{
@@ -35,12 +40,14 @@ class PlayState extends FlxState
 		// hello = new FlxText(FlxG.width / 2, 10, 0, "Hello World!", 24, false);
 		// add(hello);
 
+		FlxSprite.defaultAntialiasing = true;
+
 		var bg:FlxSprite = new FlxSprite(0, 0).makeGraphic(FlxG.width, FlxG.height, FlxColor.WHITE);
 		add(bg);
 
 		initGrid(rows, cols);
 
-		selectedFrame = new FlxSprite(0, 0).loadGraphic(Paths.image('selectedTile'));
+		selectedFrame = new FlxSprite(0, 0).loadGraphic(Paths.image('selectedFrame'));
 		add(selectedFrame);
 		selectedFrame.alpha = 0;
 
@@ -61,36 +68,35 @@ class PlayState extends FlxState
 			tiles.push(new Array());
 			for (r in 0...row)
 			{
-				var tile = new BoardTile(GRID_X + c * (ITEM_SIZE + 10), GRID_Y + r * (ITEM_SIZE + 10));
-				// tile.x = GRID_X + c * (ITEM_SIZE + 10);
-				// tile.y = GRID_Y + r * (ITEM_SIZE + 10);
+				var tile = new BoardTile(GRID_X + c * (ITEM_SIZE), GRID_Y + r * (ITEM_SIZE));
 				tile.row = r;
 				tile.col = c;
-				tiles[c].push(Math.floor(Math.random() * 5));
+				tiles[c].push(FlxG.random.int(0, TOTAL_ITEMS - 1));
 				add(tile);
-				FlxMouseEventManager.add(tile, onTileMouseDown);
+				FlxMouseEvent.add(tile, onTileMouseDown, onTileMouseUp, null, null, false, true, true, [LEFT]);
+				// FlxMouseEvent.add(tile, null, , null, null, false, true, true, [RIGHT]);
+
+				FlxTween.tween(tile, {alpha: 0, y: tile.y - 20}, 0.25, {type: FlxTweenType.BACKWARD, startDelay: r * 0.1});
 			}
 		}
 
 		items = new Array();
 		for (c in 0...col)
 		{
-			var xs:Int = 10; // Spacing between columns
-			// c != 0 ? xs = 10 : xs = 0;
 			for (r in 0...row)
 			{
 				while (isChain(r, c))
 				{
-					tiles[c][r] = Math.floor(Math.random() * 5);
+					tiles[c][r] = FlxG.random.int(0, TOTAL_ITEMS - 1);
 				}
-
-				var ys:Int = 10; // Spacing between rows
-				// r != 0 ? ys = 10 : ys = 0;
 				var index:Int = tiles[c][r];
-				var item:BoardItem = new BoardItem(GRID_X + 5 + xs * c + c * ITEM_SIZE, GRID_Y + 5 + ys * r + r * ITEM_SIZE, index);
-				item.name = Std.string(r) + " " + Std.string(c);
+				var item:BoardItem = new BoardItem(GRID_X + c * ITEM_SIZE, GRID_Y + r * ITEM_SIZE, types[index]);
+				// item.name = Std.string(r) + " " + Std.string(c);
+				item.setName(r, c);
 				items.push(item);
 				add(item);
+
+				FlxTween.tween(item, {alpha: 0, y: GRID_Y - 70}, 0.25, {type: FlxTweenType.BACKWARD, startDelay: r * 0.1});
 			}
 		}
 	}
@@ -109,8 +115,8 @@ class PlayState extends FlxState
 		{
 			pickedRow = tile.row;
 			pickedCol = tile.col;
-			selectedFrame.x = tile.x;
-			selectedFrame.y = tile.y;
+			selectedFrame.x = tile.x - 4;
+			selectedFrame.y = tile.y - 4;
 			selectedFrame.alpha = 1;
 		}
 		else
@@ -122,7 +128,20 @@ class PlayState extends FlxState
 		}
 	}
 
-	function isNextTo(row:Int, col:Int, prow:Int, pcol:Int)
+	function onTileMouseUp(tile:BoardTile)
+	{
+		trace("Clicked on " + tile.row + ", " + tile.col);
+		trace("Tile should have the " + types[tiles[tile.col][tile.row]] + " type");
+		var item:BoardItem = items[getItemPos(tile.row, tile.col)];
+		if (item?.scale == null)
+		{
+			trace("ITEM NOT FOUND????????");
+			return;
+		}
+		FlxTween.tween(item, {"scale.x": 2, "scale.y": 2}, 0.2, {type: FlxTweenType.BACKWARD});
+	}
+
+	function isNextTo(row:Int, col:Int, prow:Int, pcol:Int):Bool
 	{
 		return Math.abs(row - prow) + Math.abs(col - pcol) == 1;
 	}
@@ -132,12 +151,38 @@ class PlayState extends FlxState
 		var position:Int = -1;
 		for (p in 0...items.length)
 		{
-			if (items[p].name == Std.string(row) + " " + Std.string(col))
+			if (items[p].row == row && items[p].col == col)
 			{
 				position = p;
 			}
 		}
 		return position;
+	}
+
+	function getItemPosByName(name:String):Int
+	{
+		var position:Int = -1;
+		for (p in 0...items.length)
+		{
+			if (items[p].name == name)
+			{
+				position = p;
+			}
+		}
+		return position;
+	}
+
+	function replaceItem(name:String)
+	{
+		for (p in 0...items.length)
+		{
+			if (items[p].name == name)
+			{
+				// items[p].alpha = 0.25;
+				items[p].needRefresh = true;
+				// items[p].y -= 210;
+			}
+		}
 	}
 
 	function swapItems(row1:Int, col1:Int, row2:Int, col2:Int, ?fromCompletedSwap:Bool = false)
@@ -161,6 +206,9 @@ class PlayState extends FlxState
 		var p2:Int = getItemPos(row2, col2);
 		var time:Float = 0.2;
 
+		FlxTween.globalManager.completeTweensOf(items[p1]);
+		FlxTween.globalManager.completeTweensOf(items[p2]);
+
 		if (col1 > col2)
 		{
 			FlxTween.tween(items[p1], {x: items[p1].x - 70}, time, options);
@@ -181,8 +229,7 @@ class PlayState extends FlxState
 			FlxTween.tween(items[p1], {y: items[p1].y + 70}, time, options);
 			FlxTween.tween(items[p2], {y: items[p2].y - 70}, time);
 		}
-		items[p1].name = Std.string(row2) + " " + Std.string(col2);
-		items[p2].name = Std.string(row1) + " " + Std.string(col1);
+		swapItemNames(row1, col1, row2, col2);
 		swapTiles(row1, col1, row2, col2);
 	}
 
@@ -191,9 +238,18 @@ class PlayState extends FlxState
 		var tmp:Int = tiles[col1][row1];
 		tiles[col1][row1] = tiles[col2][row2];
 		tiles[col2][row2] = tmp;
+		trace("SwapTiles");
 	}
 
-	function evalTiles(idx:Int, row:Int, col:Int)
+	function swapItemNames(row1:Int, col1:Int, row2:Int, col2:Int)
+	{
+		var p1:Int = getItemPos(row1, col1);
+		var p2:Int = getItemPos(row2, col2);
+		items[p1].setName(row2, col2);
+		items[p2].setName(row1, col1);
+	}
+
+	function evalTiles(idx:Int, row:Int, col:Int):Bool
 	{
 		if (col > cols - 1 || col < 0)
 			return false;
@@ -239,12 +295,67 @@ class PlayState extends FlxState
 				chain++;
 			}
 		}
+
 		return chain;
+	}
+
+	function getChain(row:Int, col:Int):Array<String>
+	{
+		var current:Int = tiles[col][row];
+		var chainItems:Array<String> = [];
+		var tmp:Int;
+		var tmp2:Int;
+
+		chainItems.push(items[getItemPos(row, col)].name);
+
+		if (isColumnChain(row, col))
+		{
+			tmp = row;
+			while (evalTiles(current, tmp - 1, col))
+			{
+				tmp--;
+				chainItems.push(items[getItemPos(tmp, col)].name);
+			}
+			tmp = row;
+			while (evalTiles(current, tmp + 1, col))
+			{
+				tmp++;
+				chainItems.push(items[getItemPos(tmp, col)].name);
+			}
+		}
+
+		if (isRowChain(row, col))
+		{
+			tmp2 = col;
+			while (evalTiles(current, row, tmp2 - 1))
+			{
+				tmp2--;
+				chainItems.push(items[getItemPos(row, tmp2)].name);
+			}
+			tmp2 = col;
+			while (evalTiles(current, row, tmp2 + 1))
+			{
+				tmp2++;
+				chainItems.push(items[getItemPos(row, tmp2)].name);
+			}
+		}
+
+		return chainItems;
+	}
+
+	function isRowChain(row:Int, col:Int):Bool
+	{
+		return doChain(row, col, false) > 2;
+	}
+
+	function isColumnChain(row:Int, col:Int):Bool
+	{
+		return doChain(row, col) > 2;
 	}
 
 	function isChain(row:Int, col:Int):Bool
 	{
-		return doChain(row, col, false) > 2 || doChain(row, col) > 2;
+		return isRowChain(row, col) || isColumnChain(row, col);
 	}
 
 	function onSwapCompleted(tween:FlxTween, row1:Int, col1:Int, row2:Int, col2:Int)
@@ -254,15 +365,137 @@ class PlayState extends FlxState
 			if (isChain(row1, col1))
 			{
 				trace("Match #1!");
+				handleChain(row1, col1, isColumnChain(row1, col1));
 			}
 			if (isChain(row2, col2))
 			{
 				trace("Match #2!");
+				handleChain(row2, col2, isColumnChain(row2, col2));
 			}
 		}
 		else
 		{
 			swapItems(row1, col1, row2, col2, true);
+		}
+	}
+
+	function handleChain(row:Int, col:Int, isColumnChain:Bool)
+	{
+		var itemsToRemove:Array<String> = getChain(row, col);
+		itemsToRemove.sort(sortAlphabetic);
+
+		trace("Items to remove: " + itemsToRemove);
+
+		var columnsToShift:Array<Int> = [];
+
+		for (i in 0...itemsToRemove.length)
+		{
+			trace("Replacing " + itemsToRemove[i]);
+			replaceItem(itemsToRemove[i]);
+
+			var item:BoardItem = items[getItemPosByName(itemsToRemove[i])];
+
+			if (!columnsToShift.contains(item.col))
+			{
+				columnsToShift.push(item.col);
+			}
+		}
+
+		trace(columnsToShift);
+
+		for (column in 0...columnsToShift.length)
+		{
+			var highestRow:Int = -1;
+			var shift:Int = 0;
+			for (_ in 0...itemsToRemove.length)
+			{
+				var filteredItems:Array<String> = itemsToRemove.filter(function(item:String):Bool
+				{
+					return item.endsWith(Std.string(columnsToShift[column]));
+				});
+				highestRow = Std.parseInt(filteredItems[0].split(" ")[0]);
+				shift = filteredItems.length;
+			}
+
+			trace("Column: " + columnsToShift[column] + ", highestRow: " + highestRow + ", shift: " + shift);
+
+			shiftItemsDown(columnsToShift[column], highestRow, shift);
+		}
+	}
+
+	function shiftItemsDown(column:Int, highestRow:Int, shift:Int)
+	{
+		var prevRow:Int = -1;
+		var prevCol:Int = -1;
+		items.sort(sortByName);
+		for (i in 0...items.length)
+		{
+			var item:BoardItem = items[i];
+			// if (item.col == column && item.row < highestRow)
+			// {
+			// swapTiles(item.row, item.col, item.row + 1, item.col);
+			// item.setName(item.row + 1, item.col);
+			// FlxTween.tween(item, {y: item.y + ITEM_SIZE * shift}, 0.2);
+			// trace("ShiftItemsDown");
+			// }
+
+			if (item.needRefresh)
+			{
+				var newType:Int = FlxG.random.int(0, TOTAL_ITEMS - 1);
+				if (item.row == 0) // Refresh in place.
+				{
+					// This works, don't forget that...
+					tiles[item.col][item.row] = newType;
+					item.setType(types[newType]);
+				}
+				else
+				{
+					// swapTiles(item.row, item.col, item.row - 1, item.col);
+					// swapItemNames(item.row, item.col, item.row - 1, item.col);
+					// tiles[item.col][item.row - 1] = newType;
+					// item.setType(types[newType]);
+				}
+				trace("Refreshing: " + item.name);
+				item.needRefresh = false;
+				prevRow = item.row;
+				prevCol = item.col;
+			}
+		}
+	}
+
+	function sortAlphabetic(a:String, b:String):Int
+	{
+		a = a.toUpperCase();
+		b = b.toUpperCase();
+		if (a < b)
+		{
+			return -1;
+		}
+		else if (a > b)
+		{
+			return 1;
+		}
+		else
+		{
+			return 0;
+		}
+	}
+
+	function sortByName(_a:BoardItem, _b:BoardItem):Int
+	{
+		var a:String = _a.name.toUpperCase();
+		var b:String = _b.name.toUpperCase();
+		if (a < b)
+		{
+			return -1;
+		}
+		else if (a > b)
+		{
+			return 1;
+		}
+		else
+		{
+			return 0;
 		}
 	}
 }

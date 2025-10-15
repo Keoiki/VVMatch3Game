@@ -23,7 +23,7 @@ class Main extends Sprite
 
 	private function startGame()
 	{
-		addChild(new FlxGame(gameWidth, gameHeight, startingState, zoom, framerate, framerate, skipSplash, startFullScreen));
+		addChild(new FlxGame(gameWidth, gameHeight, startingState, framerate, framerate, skipSplash, startFullScreen));
 		addChild(new FPS(10, 3, 0xFFFFFF));
 	}
 }
